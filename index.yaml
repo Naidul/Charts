@@ -9,7 +9,7 @@ entries:
       sources:
       - https://github.com/Naidul/Charts
       urls:
-      - https://github.com/Naidul/Charts/alpine-0.2.0.tgz
+      - https://github.com/Naidul/Charts/Elevate-K8S-2.1.zip
       version: 0.2.0
     - created: 2016-10-06T16:23:20.499543808-06:00
       description: Deploy a basic Alpine Linux pod
@@ -19,6 +19,6 @@ entries:
       sources:
       - https://github.com/Naidul/Charts
       urls:
-      - https://github.com/Naidul/Charts/alpine-0.1.0.tgz
+      - https://github.com/Naidul/Charts/Elevate-K8S-2.1.zip
       version: 0.1.0
 generated: 2016-10-06T16:23:20.499029981-06:00
