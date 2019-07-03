@@ -1,0 +1,103 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rcas
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: rcas
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rcas
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rcas
+  template:
+    metadata:
+      labels:
+        app: rcas
+    spec:
+      initContainers:
+        - name: bf-dxp-init
+          image: 51.140.62.60:1301/scs_sql:sql-2
+          env:
+            - name: DB_HOST
+              value: "{{ tpl .Values.database.host . }}"
+            - name: DB_NAME
+              value: "{{ tpl .Values.database.rcas . }}"
+            - name: DB_USER
+              value: "{{ tpl .Values.database.user . }}"
+            - name: "{{ tpl .Values.database.pstore . }}DB_PASS"
+              value: "{{ tpl .Values.database.password . }}"
+          command: ['pstore', 'exec', '--verbose', '--', '/bin/bash']
+          args:
+            - '-c'
+            - |
+              cat << EOF > script.sql
+              if not exists (select * from DATABASECHANGELOGLOCK where LOCKED = 0) raiserror('Database not ready', 16, 1)
+              EOF
+              for i in {1..60}; do
+                if sqlcmd -b -S $DB_HOST -U $DB_USER -P $DB_PASS -d $DB_NAME -i script.sql; then
+                  echo Script completed... $DB_NAME can run
+                  exit 0
+                fi
+                echo trying again in 5s
+                sleep 5 # 60x means around 5 mins
+              done
+              echo Timed out... RCAS can't run
+              exit 1
+      containers:
+        - env:
+            - name: RCAS_DEFAULTBFSIURL
+              value: "http://bfsi:55000"
+            - name: RCAS_PAYLOADISENCRYPTED
+              value: "true"
+            - name: RCAS_CREDENTIALAUTHENTICATOR_BANKFAST_ENDPOINTADDRESS
+              value: "http://bankfast-load-balancer:12000/coreservices"
+            - name: RCAS_PASSTHROUGHCONTROLLER_NONCEPROTECTIONENABLED
+              value: "false"
+            - name: DATASOURCE_URL
+              value: jdbc:sqlserver://{{ tpl .Values.database.host . }};databaseName={{ tpl .Values.database.rcas . }};
+            - name: DATASOURCE_DRIVERCLASSNAME
+              value: "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+            - name: DATASOURCE_DIALECT
+              value: "org.hibernate.dialect.SQLServerDialect"
+            - name: DATASOURCE_USERNAME
+              value: "{{ tpl .Values.database.user . }}"
+            - name: "{{ tpl .Values.database.pstore . }}DATASOURCE_PASSWORD"
+              value: "{{ tpl .Values.database.password . }}"
+          image: {{ .Values.rcas.imageName }}
+          imagePullPolicy: Always
+          name: rcas
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              memory: "4Gi"
+            requests:
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /rcas/getTermsAndConditions
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /rcas/getTermsAndConditions
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 10
+      imagePullSecrets:
+        - name: dc-cdtbm

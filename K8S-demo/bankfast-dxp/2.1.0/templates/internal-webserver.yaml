@@ -1,0 +1,50 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: internal-webserver
+spec:
+  ports:
+    - name: internalport
+      port: 4443
+      targetPort: 4443
+    - name: sstinternalport
+      port: 5443
+      targetPort: 5443
+    - name: internalapiport
+      port: 6443
+      targetPort: 6443
+  selector:
+    app: internal-webserver
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: internal-webserver
+spec:
+  selector:
+    matchLabels:
+      app: internal-webserver
+  template:
+    metadata:
+      labels:
+        app: internal-webserver
+    spec:
+      containers:
+        - name: internal-webserver
+          image: {{ .Values.internalWebServer.imageName }}
+          imagePullPolicy: Always
+          env:
+            - name: LOG_LEVEL
+              value: "INFO"
+          ports:
+            - containerPort: 4443
+            - containerPort: 5443
+            - containerPort: 6443
+          resources:
+            limits:
+              memory: "500Mi"
+            requests:
+              memory: "500Mi"
+      imagePullSecrets:
+        - name: dc-cdtbm

@@ -1,0 +1,4 @@
+apiVersion: v1
+description: My First Helm Chart - NGINX Example
+name: my-first-helm-chart
+version: 0.1.0

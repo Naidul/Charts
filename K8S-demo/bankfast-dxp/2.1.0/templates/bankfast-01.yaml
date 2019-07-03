@@ -1,0 +1,131 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bankfast-01
+spec:
+  ports:
+    - name: html
+      port: 12000
+      targetPort: 12000
+    - name: rest
+      port: 12001
+      targetPort: 12001
+    - name: corewebservice
+      port: 12088
+      targetPort: 12088
+    - name: secureserveradmin
+      port: 12090
+      targetPort: 12090
+    - name: serveradmin
+      port: 12091
+      targetPort: 12091
+  selector:
+    app: bankfast-01
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bankfast-01
+spec:
+  selector:
+    matchLabels:
+      app: bankfast-01
+  template:
+    metadata:
+      labels:
+        app: bankfast-01
+    spec:
+      volumes:
+        - name: config
+          emptyDir: {}
+      initContainers:
+        - name: init-config
+          image: {{ .Values.bankfast.configImage }}
+          volumeMounts:
+            - name: config
+              mountPath: /bindmount
+          imagePullPolicy: Always
+        - name: init-db-check
+          image: 51.140.62.60:1301/scs_sql:sql-2
+          env:
+            - name: DB_HOST
+              value: "{{ tpl .Values.database.host . }}"
+            - name: DB_NAME
+              value: "{{ tpl .Values.database.bankfast . }}"
+            - name: DB_USER
+              value: "{{ tpl .Values.database.user . }}"
+            - name: "{{ tpl .Values.database.pstore . }}DB_PASS"
+              value: "{{ tpl .Values.database.password . }}"
+          command: ['pstore', 'exec', '--verbose', '--', '/bin/bash']
+          args:
+            - '-c'
+            - |
+              cat << EOF > script.sql
+
+              if not exists (select * from DATABASECHANGELOGLOCK where LOCKED = 0) raiserror('Database not ready', 16, 1)
+
+              EOF
+              for i in {1..60}; do
+                if sqlcmd -b -S $DB_HOST -U $DB_USER -P $DB_PASS -d $DB_NAME -i script.sql; then
+                  echo Script completed... $DB_NAME can run
+                  exit 0
+                fi
+                echo trying again in 5s
+                sleep 5 # 60x means around 5 mins
+              done
+              echo Timed out... BankFast can't run
+              exit 1
+      containers:
+        - env:
+            - name: BANKFAST_BLPARMS_SERVER_SERVERID
+              value: "BankFast01"
+            - name: BANKFAST_BLPARMS_HOSTWEBSERVICE_URI
+              value: "http://host-connector:80"
+            - name: BANKFAST_ODBC_HOST
+              value: "{{ tpl .Values.database.host . }}"
+            - name: BANKFAST_ODBC_PORT
+              value: "{{ tpl .Values.database.port . }}"
+            - name: BANKFAST_ODBC_NAME
+              value: "{{ tpl .Values.database.bankfast . }}"
+            - name: BANKFAST_ODBC_ENCRYPTION
+              value: "require"
+            - name: DB_USER
+              value: "{{ tpl .Values.database.user . }}"
+            - name: "{{ tpl .Values.database.pstore . }}DB_PASS"
+              value: "{{ tpl .Values.database.password . }}"
+          image: {{ .Values.bankfast.imageName }}
+          imagePullPolicy: Always
+          name: bankfast-01
+          ports:
+            - containerPort: 12000
+            - containerPort: 12001
+            - containerPort: 12088
+            - containerPort: 12090
+            - containerPort: 12091
+          volumeMounts:
+            - name: config
+              mountPath: /sst/config
+          resources:
+            limits:
+              memory: "1Gi"
+            requests:
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: 12091
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 12001
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 10
+      imagePullSecrets:
+        - name: dc-cdtbm

@@ -1,0 +1,146 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "changelog"
+annotations:
+  "helm.sh/hook": pre-install,pre-upgrade
+  "helm.sh/hook-weight": "1"
+  "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      name: "changelog"
+    spec:
+      initContainers:
+        - name: dbinit
+          image: 51.140.62.60:1301/scs_sql:sql-2
+          env:
+            - name: DB_HOST
+              value: "{{ tpl .Values.database.host . }}"
+            - name: DB_USER
+              value: "{{ tpl .Values.database.adminUser . }}"
+#            - name: PSTORE_DB_PASS
+#              value: "{{ tpl .Values.database.adminPassword . }}"
+#            - name: PSTORE_DDL_PASS
+#              value: /rds/ddl_password
+#            - name: PSTORE_RW_PASS
+#              value: /rds/rw_password
+#            - name: PSTORE_RO_PASS
+#              value: /rds/ro_password
+            - name: DB_PASS
+              value: "{{ tpl .Values.database.password . }}"
+            - name: DDL_PASS
+              value: "{{ tpl .Values.database.password . }}"
+            - name: RW_PASS
+              value: "{{ tpl .Values.database.password . }}"
+            - name: RO_PASS
+              value: "{{ tpl .Values.database.password . }}"
+            - name: NAMESPACE
+              value: "{{ tpl .Values.database.namespace . }}"
+            - name: BF_DATABASE
+              value: "{{ tpl .Values.database.bankfast . }}"
+            - name: MFA_DATABASE
+              value: "{{ tpl .Values.database.mfa . }}"
+            - name: PORTAL_DATABASE
+              value: "{{ tpl .Values.database.portal . }}"
+            - name: RCAS_DATABASE
+              value: "{{ tpl .Values.database.rcas . }}"
+          command: ['pstore', 'exec', '--verbose', '--', '/bin/bash']
+          args:
+            - '-c'
+            - |
+              set -e
+              echo Creating/updating databases in namespace "$NAMESPACE"...
+              cat << EOF > script.sql
+              create procedure #createdbuser (
+                  @db nvarchar(max),
+                  @user nvarchar(max),
+                  @pass nvarchar(max),
+                  @canCreate bit,
+                  @canWrite bit,
+                  @canRead bit
+              ) as begin
+                  if not exists (select * from master.sys.databases where name = @db)
+                    exec ('create database ' + @db);
+
+                  if exists (select * from master.sys.sql_logins where name = @user)
+                    exec('alter login ' + @user + ' with password = ''' + @pass + '''')
+                  else
+                    exec('create login ' + @user + ' with password = N''' + @pass + ''', check_policy = OFF')
+
+                  exec('use ' + @db + ';'
+                    + ' if not exists(select * from sys.database_principals where name = ''' + @user + ''')'
+                    + ' create user ' + @user + ' for login ' + @user + ' with default_schema = dbo')
+
+                  -- alter db statements at beginning of changelog require db_owner privileges, but should really be db_ddladmin
+                  if @canCreate = 1 exec('use ' + @db + '; alter role db_owner add member ' + @user)
+                  if @canWrite = 1 exec('use ' + @db + '; alter role db_datawriter add member ' + @user)
+                  if @canRead = 1 exec('use ' + @db + '; alter role db_datareader add member ' + @user)
+              end
+              go
+
+              create procedure #createuser (
+                  @user nvarchar(max),
+                  @pass nvarchar(max),
+                  @canCreate bit,
+                  @canWrite bit,
+                  @canRead bit
+              ) as begin
+                exec #createdbuser '$(BF_DATABASE)', @user, @pass, @canCreate, @canWrite, @canRead
+                exec #createdbuser '$(MFA_DATABASE)', @user, @pass, @canCreate, @canWrite, @canRead
+                exec #createdbuser '$(PORTAL_DATABASE)', @user, @pass, @canCreate, @canWrite, @canRead
+                exec #createdbuser '$(RCAS_DATABASE)', @user, @pass, @canCreate, @canWrite, @canRead
+              end
+              go
+
+              exec #createuser 'ddlusr_$NAMESPACE', '$DDL_PASS', true, true, true
+              exec #createuser 'appusr_$NAMESPACE', '$RW_PASS', false, true, true
+              exec #createuser 'rousr_$NAMESPACE', '$RO_PASS', false, false, true
+
+              drop procedure #createuser
+              drop procedure #createdbuser
+
+              EOF
+              sqlcmd -b -S $DB_HOST -U $DB_USER -P $DB_PASS -i script.sql
+              echo Create/update of databases in "$NAMESPACE" complete
+      containers:
+        - name: changelog
+          image: {{ .Values.changelog.imageName }}
+          env:
+            - name: DB_HOST
+              value: "{{ tpl .Values.database.host . }}"
+            - name: DB_PORT
+              value: "{{ tpl .Values.database.port . }}"
+            - name: DB_USER
+              value: "{{ tpl .Values.database.adminUser . }}"
+            - name: "{{ tpl .Values.database.pstore . }}DB_PASS"
+              value: "{{ tpl .Values.database.adminPassword . }}"
+            - name: "BF_DATABASE"
+              value: "{{ tpl .Values.database.bankfast . }}"
+            - name: "MFA_DATABASE"
+              value: "{{ tpl .Values.database.mfa . }}"
+            - name: "PORTAL_DATABASE"
+              value: "{{ tpl .Values.database.portal . }}"
+            - name: "RCAS_DATABASE"
+              value: "{{ tpl .Values.database.rcas . }}"
+            - name: EXTERNAL_HOST
+              value: "{{ template "host.external" . }}"
+            - name: MEMORY_REQUEST
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.memory
+            - name: MEMORY_LIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+          resources:
+            limits:
+              memory: "1Gi"
+            requests:
+              memory: "512Mi"
+      imagePullPolicy: Always
+      imagePullSecrets:
+        - name: sst-docker-registry-key
+      restartPolicy: Never

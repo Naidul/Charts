@@ -1,0 +1,50 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: docgen
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: docgen
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docgen
+spec:
+  selector:
+    matchLabels:
+      app: docgen
+  template:
+    metadata:
+      labels:
+        app: docgen
+    spec:
+      volumes:
+        - name: config
+          emptyDir: {}
+      initContainers:
+        - name: init-config
+          image: {{ .Values.bankfast.configImage }}
+          volumeMounts:
+            - name: config
+              mountPath: /bindmount
+      containers:
+        - image: {{ .Values.docgen.imageName }}
+          resources:
+            limits:
+              memory: "2Gi"
+            requests:
+              memory: "2Gi"
+          imagePullPolicy: Always
+          name: docgen
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /sst/config
+      imagePullSecrets:
+        - name: dc-cdtbm

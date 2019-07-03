@@ -1,0 +1,44 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: host-connector
+spec:
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: host-connector
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: host-connector
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: host-connector
+  template:
+    metadata:
+      labels:
+        app: host-connector
+    spec:
+      containers:
+        - name: host-connector
+          image: {{ .Values.hostConnector.imageName }}
+          env:
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: UPSTREAM_SERVER
+              value: {{ .Values.bankfast.host.uri }}
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              memory: "500Mi"
+            requests:
+              memory: "500Mi"
+          imagePullPolicy: Always
+      imagePullSecrets:
+        - name: dc-cdtbm

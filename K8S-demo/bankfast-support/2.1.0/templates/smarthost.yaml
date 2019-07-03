@@ -1,0 +1,147 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smarthost
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: smarthost
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smarthost
+spec:
+  selector:
+    matchLabels:
+      app: smarthost
+  template:
+    metadata:
+      labels:
+        app: smarthost
+    spec:
+      initContainers:
+        - name: dbinit
+          image: 51.140.62.60:1301/scs_sql:sql-2
+          env:
+            - name: DB_HOST
+              value: "{{ tpl .Values.database.host . }}"
+            - name: DB_USER
+              value: "{{ tpl .Values.database.user . }}"
+            - name: DB_PASS
+              value: "{{ tpl .Values.database.password . }}"
+#            - name: PSTORE_DB_PASS
+#              value: /rds/{{ .Values.deploy.env }}/rancher/MasterUserPassword
+#            - name: PSTORE_DDL_PASS
+#              value: /rds/ddl_password
+#            - name: PSTORE_RW_PASS
+#              value: /rds/rw_password
+#            - name: PSTORE_RO_PASS
+#              value: /rds/ro_password
+#            - name: DDL_PASS
+#              value: will-be-replaced
+#            - name: RW_PASS
+#              value: will-be-replaced
+#            - name: RO_PASS
+#              value: will-be-replaced
+            - name: NAMESPACE
+              value: "{{ tpl .Values.database.namespace . }}"
+          command: ['pstore', 'exec', '--verbose', '--', '/bin/bash']
+          args:
+            - '-c'
+            - |
+              set -e
+              echo Creating/updating databases in namespace "$NAMESPACE"...
+              cat << EOF > script.sql
+              create procedure #createdbuser (
+                  @db nvarchar(max),
+                  @user nvarchar(max),
+                  @pass nvarchar(max),
+                  @canCreate bit,
+                  @canWrite bit,
+                  @canRead bit
+              ) as begin
+                  if not exists (select * from master.sys.databases where name = @db)
+                    exec ('create database ' + @db);
+
+                  if exists (select * from master.sys.sql_logins where name = @user)
+                    exec('alter login ' + @user + ' with password = ''' + @pass + '''')
+                  else
+                    exec('create login ' + @user + ' with password = N''' + @pass + ''', check_policy = OFF')
+
+                  exec('use ' + @db + ';'
+                    + ' if not exists(select * from sys.database_principals where name = ''' + @user + ''')'
+                    + ' create user ' + @user + ' for login ' + @user + ' with default_schema = dbo')
+
+                  -- alter db statements at beginning of changelog require db_owner privileges, but should really be db_ddladmin
+                  if @canCreate = 1 exec('use ' + @db + '; alter role db_owner add member ' + @user)
+                  if @canWrite = 1 exec('use ' + @db + '; alter role db_datawriter add member ' + @user)
+                  if @canRead = 1 exec('use ' + @db + '; alter role db_datareader add member ' + @user)
+              end
+              go
+
+              create procedure #createuser (
+                  @user nvarchar(max),
+                  @pass nvarchar(max),
+                  @canCreate bit,
+                  @canWrite bit,
+                  @canRead bit
+              ) as begin
+                exec #createdbuser 'smarthost_$(NAMESPACE)', @user, @pass, @canCreate, @canWrite, @canRead
+              end
+              go
+
+              exec #createuser 'ddlusr_$NAMESPACE', '$DDL_PASS', true, true, true
+              exec #createuser 'appusr_$NAMESPACE', '$RW_PASS', false, true, true
+              exec #createuser 'rousr_$NAMESPACE', '$RO_PASS', false, false, true
+
+              drop procedure #createuser
+              drop procedure #createdbuser
+
+              EOF
+              sqlcmd -b -S $DB_HOST -U $DB_USER -P $DB_PASS -i script.sql
+              echo Create/update of smarthost database in "$NAMESPACE" complete
+      containers:
+        - image: {{ .Values.smarthost.image }}
+          imagePullPolicy: IfNotPresent
+          name: smarthost
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATASOURCE_URL
+              value: jdbc:sqlserver://{{ tpl .Values.database.host . }};databaseName=smarthost_{{ tpl .Values.database.namespace . }};
+            - name: DATASOURCE_USERNAME
+              value: "{{ tpl .Values.database.user . }}"
+#            - name: PSTORE_DATASOURCE_PASSWORD
+#              value: /rds/ddl_password
+            - name: DATASOURCE_PASSWORD
+              value: "{{ tpl .Values.database.password . }}"
+            - name: DATASOURCE_DRIVERCLASSNAME
+              value: "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+            - name: FAKEHOST_URL
+              value: "http://fakehost:12018"
+          resources:
+            limits:
+              memory: "2Gi"
+            requests:
+              memory: "1Gi"
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /smarthost/rest/soapRequestLog?countOnly
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 5
+      imagePullSecrets:
+        - name: dc-cdtbm

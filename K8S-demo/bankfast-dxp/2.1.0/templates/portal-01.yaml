@@ -1,0 +1,173 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal-01
+spec:
+  ports:
+    - name: internalport
+      port: 8081
+      targetPort: 8081
+    - name: externalport
+      port: 8082
+      targetPort: 8082
+    - name: sstinternalport
+      port: 8083
+      targetPort: 8083
+  selector:
+    app: portal-01
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal-01
+spec:
+  selector:
+    matchLabels:
+      app: portal-01
+  template:
+    metadata:
+      labels:
+        app: portal-01
+    spec:
+      volumes:
+        - name: config
+          emptyDir: {}
+      initContainers:
+        - name: init-config
+          image: {{ .Values.bankfast.configImage }}
+          volumeMounts:
+            - name: config
+              mountPath: /bindmount
+          imagePullPolicy: Always
+        - name: bf-dxp-init
+          image: 51.140.62.60:1301/scs_sql:sql-2
+          imagePullPolicy: Always
+          env:
+            - name: DB_HOST
+              value: "{{ tpl .Values.database.host . }}"
+            - name: DB_NAME
+              value: "{{ tpl .Values.database.portal . }}"
+            - name: DB_USER
+              value: "{{ tpl .Values.database.user . }}"
+            - name: "{{ tpl .Values.database.pstore . }}DB_PASS"
+              value: "{{ tpl .Values.database.password . }}"
+          command: ['pstore', 'exec', '--verbose', '--', '/bin/bash']
+          args:
+            - '-c'
+            - |
+              cat << EOF > script.sql
+              if not exists (select * from DATABASECHANGELOGLOCK where LOCKED = 0) raiserror('Database not ready', 16, 1)
+              EOF
+              for i in {1..60}; do
+                if sqlcmd -b -S $DB_HOST -U $DB_USER -P $DB_PASS -d $DB_NAME -i script.sql; then
+                  echo Script completed... $DB_NAME can run
+                  exit 0
+                fi
+                echo trying again in 5s
+                sleep 5 # 60x means around 5 mins
+              done
+              echo Timed out... Portal can't run
+              exit 1
+#        # When running clustered, Liferay uses an external Elasticsearch server.
+#        # Wait until the elasticsearch service is available (healthy).
+#        # For non liferay cluster (ie. DEV env) comment out this init container as elastic search can run embedded in DEV.
+#        - name: wait-for-elasticsearch
+#          # There is a bug in dns lookup and k8s with latest busybox image - revert to 1.28 for now.
+#          # See https://github.com/kubernetes/website/pull/9901
+#          image: busybox:1.28
+#          command:
+#            - 'sh'
+#            - '-c'
+#            - 'until wget --quiet http://elasticsearch:9200/_cluster/health; do echo waiting for healthy elasticsearch; sleep 10; done; echo elastic healthy!;'
+      containers:
+        - name: portal-01
+          image: {{ .Values.portal.imageName }}
+          env:
+            - name: PORTAL_NAME
+              value: portal-01
+            - name: DATABASE_NAME
+              value: "{{ tpl .Values.database.portal . }}"
+            - name: "{{ tpl .Values.database.pstore . }}DATABASE_PWD"
+              value: "{{ tpl .Values.database.password . }}"
+            - name: LICENSE_TYPE
+              value: XML
+            - name: DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: bf-dxp-config
+                  key: databaseHost
+            - name: DATABASE_USER
+              value: "{{ tpl .Values.database.user . }}"
+            - name: EXTERNAL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: bf-dxp-config
+                  key: externalHostUri
+            - name: EXTERNAL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: bf-dxp-config
+                  key: externalPort
+            - name: HOSTS_SCHEME
+              valueFrom:
+                configMapKeyRef:
+                  name: bf-dxp-config
+                  key: hostScheme
+            - name: HOSTS_SECURED
+              valueFrom:
+                configMapKeyRef:
+                  name: bf-dxp-config
+                  key: hostSecured
+            - name: INTERNAL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: bf-dxp-config
+                  key: internalHostUri
+            - name: INTERNAL_PORT
+              value: "443"
+            - name: INTERNAL_SST_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: bf-dxp-config
+                  key: sstInternalHostUri
+            - name: INTERNAL_SST_PORT
+              value: "443"
+            - name: CLUSTER_ENABLED
+              value: "false"
+            - name: LOG_TIMESTAMP
+              value: "false"
+            - name: LOG_LEVEL_ROOT
+              value: "DEBUG"
+            - name: LOG_LEVEL_SST
+              value: "TRACE"
+          resources:
+            limits:
+              memory: "3Gi" # Liferay
+            requests:
+              memory: "3Gi"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8081
+            - containerPort: 8082
+          volumeMounts:
+            - name: config
+              mountPath: /sst/config
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 400
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 360
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 20
+      imagePullSecrets:
+        - name: dc-cdtbm

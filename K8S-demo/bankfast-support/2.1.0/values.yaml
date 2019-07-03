@@ -1,0 +1,24 @@
+---
+deploy:
+  env: sst
+  client: internal
+
+fakehost:
+  image: 51.140.62.60:1301/abank-fakehost:5.15.1.14
+
+smarthost:
+  image: 51.140.62.60:1301/dxp-smarthost:1.0.0
+database:
+  # When it is using RDS in SCS, the value will be something like
+  # - rds-rancher-{env}-master.{env}-int.{client}.scs.sandstone.cloud
+  host: 168.62.169.249
+  user: elevate
+  password: elevate
+  smarthost: smarthost_{{ .Release.Namespace }}
+  port: "1433"
+  namespace: elevate_qa_portal
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

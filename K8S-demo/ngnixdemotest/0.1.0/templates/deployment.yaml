@@ -1,0 +1,48 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: 2017-10-03T15:03:17Z
+  generation: 1
+  labels:
+    run: "{{ .Release.Name }}"
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"     
+  name: "{{ .Release.Name }}"
+  namespace: default
+  resourceVersion: "3030"
+  selfLink: /apis/extensions/v1beta1/namespaces/default/deployments/example
+  uid: fd03ac95-a84b-11e7-a417-0800277e13b3
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      run: "{{ .Release.Name }}"
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: "{{ .Release.Name }}"
+    spec:
+      {{- if .Values.image.pullSecret }}    
+            imagePullSecrets:
+              - name: "{{ .Values.image.pullSecret }}"
+      {{- end }}          
+      containers:
+      - image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        name: example
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+status: {}

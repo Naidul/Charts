@@ -1,0 +1,125 @@
+---
+# Default values for bankfast-dxp-full-stack.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+deploy:
+  env: sst
+  client: internal
+
+host:
+  # This configuration is for deploying bankfast dxp full stack to local environment.
+  # We only deploy bankfast dxp helm chart to local or Sandstone cloud, so
+  # if host.localname is "none" (case sensitive), then the host name value are derived from
+  # deploy.env following sandstone cloud service endpoint url rules.
+  # There are four host names when it is deployed to cloud
+  # For IB users(external):
+  # ib-${namespace}.${env}.${client}.scs.sandstone.cloud ,
+  # For FI internal accessing admin pages:
+  # admin-${namespace}.int.${env}.${client}.mgmt.core.scs.sandstone.cloud
+  # For SST internal accessing admin pages:
+  # admin-${namespace}.${env}.${client}.mgmt.core.scs.sandstone.cloud
+  # For FI internal accessing web service APIs:
+  # api-${namespace}.int.${env}.${client}.scs.sandstone.cloud
+  localname: none
+  scheme: https
+  domainName: k8s.sandstone.online
+database:
+  # When it is using RDS in SCS, the value will be something like
+  # - rds-rancher-{env}-master.{env}-int.{client}.scs.sandstone.cloud
+  host: 168.62.169.249
+  user: elevate
+  # When connecting to database that is not RDS (ie. dev db or docker db) change pstore to empty string "" and set correct password for db user
+  pstore: ""
+  password: elevate
+  # Admin user should only be used by Changelog
+  adminUser: "elevate"
+  adminPassword: elevate
+  rcas: Elevate_DXP_Rcas
+  portal: Elevate_DXP_Portal
+  bankfast: Elevate_DXP_Bankfast
+  mfa: Elevate_DXP_Mfa
+  port: "1433"
+  namespace: "elevate_qa_portal"
+replicaCount: 1
+
+external:
+  appointmentManagerUrl: https://appointment-manager.elevate-stealth.unisys.com
+  appointmentManagerContextRoot: AMOnlineTest
+  chatbotUrl: https://51.140.190.205:8443
+  chatbotContextRoot: chatbotuidemo
+  pfmBaseurl: http://pfm-usc.elevate-demo.unisys.com
+  applyBaseUrl: http://apply-usc.elevate-demo.unisys.com
+
+bankfast:
+  imageName: 51.140.62.60:1301/abank-bankfast:5.15.1.14
+  configImage: 51.140.62.60:1301/dxp-elevate-config:1.0.0-UECSUP-1424-update-elevate-configuration-20190410203048
+  host:
+    # uri: http://fakehost:12018
+    uri: http://smarthost:8080/smarthost/services/bankFastHost
+
+batchprocessor:
+  imageName: 51.140.62.60:1301/abank-batch-processor:5.15.1.16
+
+bfsi:
+  imageName: 51.140.62.60:1301/bankfast-server-integration:3.16.0
+
+changelog:
+  imageName: 51.140.62.60:1301/docker-dxp-changelog:1.1.0-DSSTPBFFZZ-17416-fix-portal-script-20190319202233
+
+docgen:
+  imageName: 51.140.62.60:1301/dxp-docgen:2.3.0
+
+hostConnector:
+  imageName: 51.140.62.60:1301/dxp-ssl-connector:1.2.0
+
+internalWebServer:
+  imageName: 51.140.62.60:1301/dxp-internal-webserver:2.3.0
+
+loadBalancer:
+  imageName: 51.140.62.60:1301/dxp-load-balancer:1.1.0
+
+mars:
+  imageName: 51.140.62.60:1301/abank-mars:5.15.1.16
+
+portal:
+  imageName: 51.140.62.60:1301/dxp-portal:1.2.0-UECSUP-1424-migrate-promotions-widget-integration-to-dxp-20190328133920
+
+rcas:
+  imageName: 51.140.62.60:1301/rich-client-application-server:3.16.0
+
+waf:
+  imageName: 51.140.62.60:1301/bankfast-dxp-waf:2.4.0-UECSUP-1424-migrate-promotions-widget-integration-to-dxp-20190402204552
+
+elevateConnector:
+  imageName: 51.140.62.60:1301/elevate-connector:1.0
+
+image:
+  repository: nginx
+  tag: stable
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

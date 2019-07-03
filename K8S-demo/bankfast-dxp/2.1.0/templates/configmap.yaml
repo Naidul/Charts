@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bf-dxp-config
+data:
+  databaseHost: {{ tpl .Values.database.host . }}
+  externalHostUri: {{ template "host.external" . }}
+  internalHostUri: {{ template "host.internal" . }}
+  sstInternalHostUri: {{ template "host.sstInternal" . }}
+  hostScheme: {{ .Values.host.scheme }}
+  {{- if eq .Values.host.scheme "https"}}
+  hostSecured: "true"
+  externalPort: "443"
+  {{- end}}
+  {{- if eq .Values.host.scheme "http"}}
+  hostSecured: "false"
+  externalPort: "80"
+  {{- end}}

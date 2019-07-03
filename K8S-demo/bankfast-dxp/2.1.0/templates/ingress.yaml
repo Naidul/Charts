@@ -1,0 +1,59 @@
+---
+# Make some services available externally
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  {{- if eq .Values.host.localname "none"}}
+  - host: {{ template "host.external" . }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: waf
+          servicePort: 80
+  - host: {{ template "host.internal" . }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: internal-webserver
+          servicePort: 4443
+  - host: {{ template "host.sstInternal" . }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: internal-webserver
+          servicePort: 5443
+  - host: {{ template "host.internalAPI" . }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: internal-webserver
+          servicePort: 6443
+  - host: {{ template "host.mars" . }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: mars
+          servicePort: 5033
+  {{- else}}
+  - http:
+      paths:
+      - path: /
+        backend:
+          serviceName: waf
+          servicePort: 80
+      # path is not able to access values from comfig map, so use helm values directly
+      - path: /internal-webserver
+        backend:
+          serviceName: internal-webserver
+          servicePort: 4443
+  {{- end}}
