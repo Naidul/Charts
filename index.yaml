@@ -5,7 +5,7 @@ entries:
       description: Deploy a basic Alpine Linux pod
       digest: 99c76e403d752c84ead610644d4b1c2f2b453a74b921f422b9dcb8a7c8b559cd
       home: https://github.com/Naidul/
-      name: alpine
+      name: BankFast
       sources:
       - https://github.com/Naidul/Charts
       urls:
@@ -15,7 +15,7 @@ entries:
       description: Deploy a basic Alpine Linux pod
       digest: 515c58e5f79d8b2913a10cb400ebb6fa9c77fe813287afbacf1a0b897cd78727
       home: https://github.com/Naidul/
-      name: alpine
+      name: BankFast
       sources:
       - https://github.com/Naidul/Charts
       urls:
