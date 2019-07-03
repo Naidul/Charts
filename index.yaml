@@ -9,8 +9,8 @@ entries:
       sources:
       - https://github.com/Naidul/Charts
       urls:
-      - https://github.com/Naidul/Charts/Elevate-K8S-2.1.zip
-      version: 0.2.0
+      - https://github.com/Naidul/Charts/
+      version: 2.1
     - created: 2016-10-06T16:23:20.499543808-06:00
       description: Deploy a basic Alpine Linux pod
       digest: 515c58e5f79d8b2913a10cb400ebb6fa9c77fe813287afbacf1a0b897cd78727
@@ -19,6 +19,6 @@ entries:
       sources:
       - https://github.com/Naidul/Charts
       urls:
-      - https://github.com/Naidul/Charts/Elevate-K8S-2.1.zip
-      version: 0.1.0
+      - https://github.com/Naidul/Charts/
+      version: 2.1
 generated: 2016-10-06T16:23:20.499029981-06:00
